@@ -18,7 +18,14 @@
 <script setup>
   import { RouterView } from 'vue-router'
   import NavBar from '@/components/NavBar.vue';
- 
+  import { onMounted } from 'vue';
+  import { useMqttStore } from '@/store/mqttStore';
+
+  const Mqtt = useMqttStore();
+
+  onMounted(() => {
+    Mqtt.connect();
+  });
 </script>
 
 <style>

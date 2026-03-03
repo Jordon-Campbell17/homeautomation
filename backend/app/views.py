@@ -27,14 +27,57 @@ from math import floor
 
 
 # 1. CREATE ROUTE FOR '/api/set/combination'
-    
+@app.route('/api/set/combination', methods=['POST'])
+def set_combination():
+    if request.method == "POST":
+        passcode = request.form.get('passcode')
+        if passcode and passcode.isdigit() and len(passcode) == 4:
+            result = mongo.setPasscode(passcode)
+            if result:
+                return jsonify({"status": "complete", "data": "complete"})
+    return jsonify({"status": "failed", "data": "failed"})
+
 # 2. CREATE ROUTE FOR '/api/check/combination'
+@app.route('/api/check/combination', methods=['POST'])
+def check_combination():
+    if request.method == "POST":
+        passcode = request.form.get('passcode')
+        if passcode:
+            result = mongo.checkPasscode(passcode)
+            if result > 0:
+                return jsonify({"status": "complete", "data": "complete"})
+    return jsonify({"status": "failed", "data": "failed"})
 
 # 3. CREATE ROUTE FOR '/api/update'
-   
+@app.route('/api/update', methods=['POST'])
+def update():
+    if request.method == "POST":
+        data = request.get_json()
+        if data:
+            data['timestamp'] = int(time())
+            Mqtt.publish(str(data['id']), dumps(data))
+            result = mongo.addRadar(data)
+            if result:
+                return jsonify({"status": "complete", "data": "complete"})
+    return jsonify({"status": "failed", "data": "failed"})
+
 # 4. CREATE ROUTE FOR '/api/reserve/<start>/<end>'
+@app.route('/api/reserve/<start>/<end>', methods=['GET'])
+def get_reserve(start, end):
+    if request.method == "GET":
+        result = mongo.getRadarInRange(start, end)
+        if result:
+            return jsonify({"status": "found", "data": result})
+    return jsonify({"status": "failed", "data": 0})
 
 # 5. CREATE ROUTE FOR '/api/avg/<start>/<end>'
+@app.route('/api/avg/<start>/<end>', methods=['GET'])
+def get_avg(start, end):
+    if request.method == "GET":
+        result = mongo.avgReserve(start, end)
+        if result:
+            return jsonify({"status": "found", "data": result[0]['average']})
+    return jsonify({"status": "failed", "data": 0})
 
 
    

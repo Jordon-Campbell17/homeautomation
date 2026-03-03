@@ -1,19 +1,16 @@
 //##################################################################################################################
 //##                                      ELET2415 DATA ACQUISITION SYSTEM CODE                                   ##
-//##                                                                                                              ##
 //##################################################################################################################
-
- 
 
 // IMPORT ALL REQUIRED LIBRARIES
 #include <rom/rtc.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_ILI9341.h>
+#include <ArduinoJson.h>
 
-
-
-//IMPORT IMAGES
+// IMPORT IMAGES
 #include "lockclose.h"
 #include "lockopen.h"
-
 
 #ifndef _WIFI_H 
 #include <WiFi.h>
@@ -31,32 +28,45 @@
 #ifndef ARDUINO_H
 #include <Arduino.h>
 #endif 
- 
-
-
-// DEFINE VARIABLES
-
-
-
 
 // IMPORT FONTS FOR TFT DISPLAY
 #include <Fonts/FreeSansBold18pt7b.h>
 #include <Fonts/FreeSansBold9pt7b.h> 
 
- 
+// TFT DISPLAY PIN DEFINITIONS
+#define TFT_CS    5
+#define TFT_RST   16 
+#define TFT_DC    17
+#define TFT_MOSI  23
+#define TFT_SCK   18
+#define TFT_MISO  19
 
+// BUTTON PIN DEFINITIONS
+#define BUTTON1_PIN  25
+#define BUTTON2_PIN  26
+#define BUTTON3_PIN  27
+
+// POTENTIOMETER PIN
+#define POT_PIN  34
+
+// VARIABLES
+uint8_t currentDigit = 1;  // Keeps track of the current digit being modified
+bool lockState = false;     // Keeps track of Open and Close state of lock
+
+uint8_t digit1Val = 0;
+uint8_t digit2Val = 0;
+uint8_t digit3Val = 0;
+uint8_t digit4Val = 0;
 
 // MQTT CLIENT CONFIG  
-static const char* pubtopic      = "620012345";                    // Add your ID number here
-static const char* subtopic[]    = {"620012345_sub","/elet2415"};  // Array of Topics(Strings) to subscribe to
-static const char* mqtt_server   = "address or ip";         // Broker IP address or Domain name as a String 
+static const char* pubtopic      = "620162191";
+static const char* subtopic[]    = {"620162191_sub", "/elet2415"};
+static const char* mqtt_server   = "10.22.13.197";
 static uint16_t mqtt_port        = 1883;
 
 // WIFI CREDENTIALS
-const char* ssid       = "YOUR_SSID"; // Add your Wi-Fi ssid
-const char* password   = "YOUR_PASS"; // Add your Wi-Fi password 
-
-
+const char* ssid       = "MonaConnnect";
+const char* password   = "";
 
 // TASK HANDLES 
 TaskHandle_t xMQTT_Connect          = NULL; 
@@ -65,26 +75,24 @@ TaskHandle_t xLOOPHandle            = NULL;
 TaskHandle_t xUpdateHandle          = NULL;
 TaskHandle_t xButtonCheckeHandle    = NULL; 
 
+// TFT OBJECT
+Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCK, TFT_RST, TFT_MISO);
 
-// FUNCTION DECLARATION   
-void checkHEAP(const char* Name);   // RETURN REMAINING HEAP SIZE FOR A TASK
-void initMQTT(void);                // CONFIG AND INITIALIZE MQTT PROTOCOL
-unsigned long getTimeStamp(void);   // GET 10 DIGIT TIMESTAMP FOR CURRENT TIME
+// FUNCTION DECLARATIONS   
+void checkHEAP(const char* Name);
+void initMQTT(void);
+unsigned long getTimeStamp(void);
 void callback(char* topic, byte* payload, unsigned int length);
 void initialize(void);
-bool publish(const char *topic, const char *payload); // PUBLISH MQTT MESSAGE(PAYLOAD) TO A TOPIC
+bool publish(const char *topic, const char *payload);
 void vButtonCheck( void * pvParameters );
 void vUpdate( void * pvParameters ); 
-
 void digit1(uint8_t number);
 void digit2(uint8_t number);
 void digit3(uint8_t number);
 void digit4(uint8_t number);
-
 void checkPasscode(void);
 void showLockState(void);
-
- 
 
 //############### IMPORT HEADER FILES ##################
 #ifndef NTP_H
@@ -95,232 +103,240 @@ void showLockState(void);
 #include "mqtt.h"
 #endif
 
-
-/* Initialize class objects*/
-
-
-
- 
- 
-/* Declare your functions below */
-
-
-
 void setup() {
-    Serial.begin(115200);  // INIT SERIAL  
- 
-  
-    
-  // CONFIGURE THE ARDUINO PINS OF THE 7SEG AS OUTPUT
- 
-  /* Configure all others here */
+    Serial.begin(115200);
 
-  initialize();           // INIT WIFI, MQTT & NTP 
-  vButtonCheckFunction(); // UNCOMMENT IF USING BUTTONS THEN ADD LOGIC FOR INTERFACING WITH BUTTONS IN THE vButtonCheck FUNCTION
+    // INIT TFT DISPLAY
+    tft.begin();
+    tft.setRotation(2);
+    tft.fillScreen(ILI9341_BLACK);
 
+    // CONFIGURE BUTTON PINS
+    pinMode(BUTTON1_PIN, INPUT_PULLUP);
+    pinMode(BUTTON2_PIN, INPUT_PULLUP);
+    pinMode(BUTTON3_PIN, INPUT_PULLUP);
+
+    // CONFIGURE POT PIN
+    pinMode(POT_PIN, INPUT);
+
+    // DISPLAY STARTUP SCREEN - show 0 in all boxes
+    tft.setFont(&FreeSansBold9pt7b);
+    tft.setTextColor(ILI9341_WHITE);
+    tft.setTextSize(1);
+    tft.setCursor(60, 120);
+    tft.printf("Home Automation");
+    tft.setCursor(60, 150);
+    tft.printf("Remote Lock");
+
+    digit1(0);
+    digit2(0);
+    digit3(0);
+    digit4(0);
+
+    initialize();
+    vButtonCheckFunction();
 }
-  
-
 
 void loop() {
-  // put your main code here, to run repeatedly: 
+    // READ POTENTIOMETER AND MAP TO 0-9
+    int potValue = analogRead(POT_PIN);
+    int mappedValue = map(potValue, 0, 4095, 0, 9);
 
- 
+    // ASSIGN MAPPED VALUE TO CURRENT SELECTED DIGIT
+    switch(currentDigit) {
+        case 1: digit1Val = mappedValue; digit1(digit1Val); break;
+        case 2: digit2Val = mappedValue; digit2(digit2Val); break;
+        case 3: digit3Val = mappedValue; digit3(digit3Val); break;
+        case 4: digit4Val = mappedValue; digit4(digit4Val); break;
+    }
 
-  vTaskDelay(1000 / portTICK_PERIOD_MS);  
+    vTaskDelay(100 / portTICK_PERIOD_MS);  
 }
 
-
-
-  
 //####################################################################
 //#                          UTIL FUNCTIONS                          #       
 //####################################################################
-void vButtonCheck( void * pvParameters )  {
+void vButtonCheck( void * pvParameters ) {
     configASSERT( ( ( uint32_t ) pvParameters ) == 1 );     
       
     for( ;; ) {
-        // Add code here to check if a button(S) is pressed
-        // then execute appropriate function if a button is pressed  
+        // BUTTON 1 - Select next digit
+        if(digitalRead(BUTTON1_PIN) == LOW) {
+            vTaskDelay(200 / portTICK_PERIOD_MS); // debounce
+            currentDigit++;
+            if(currentDigit > 4) currentDigit = 1;
+        }
 
-        // 1. Implement button1  functionality
+        // BUTTON 2 - Check passcode
+        if(digitalRead(BUTTON2_PIN) == LOW) {
+            vTaskDelay(200 / portTICK_PERIOD_MS); // debounce
+            checkPasscode();
+        }
 
-        // 2. Implement button2  functionality
-
-        // 3. Implement button3  functionality
+        // BUTTON 3 - Lock (set lockState to false)
+        if(digitalRead(BUTTON3_PIN) == LOW) {
+            vTaskDelay(200 / portTICK_PERIOD_MS); // debounce
+            lockState = false;
+            showLockState();
+        }
        
         vTaskDelay(200 / portTICK_PERIOD_MS);  
     }
 }
 
-void vUpdate( void * pvParameters )  {
+void vUpdate( void * pvParameters ) {
     configASSERT( ( ( uint32_t ) pvParameters ) == 1 );    
  
     for( ;; ) {
-          // Task code goes here.   
-          // PUBLISH to topic every second.  
-            
+        // PUBLISH timestamp to topic every second
+        char payload[100];
+        unsigned long ts = getTimeStamp();
+        snprintf(payload, sizeof(payload),
+            "{\"id\":\"620162191\",\"timestamp\":%lu}", ts);
+        publish(pubtopic, payload);
         vTaskDelay(1000 / portTICK_PERIOD_MS);  
     }
 }
 
 unsigned long getTimeStamp(void) {
-          // RETURNS 10 DIGIT TIMESTAMP REPRESENTING CURRENT TIME
-          time_t now;         
-          time(&now); // Retrieve time[Timestamp] from system and save to &now variable
-          return now;
+    time_t now;         
+    time(&now);
+    return now;
 }
 
 void callback(char* topic, byte* payload, unsigned int length) {
-  // ############## MQTT CALLBACK  ######################################
-  // RUNS WHENEVER A MESSAGE IS RECEIVED ON A TOPIC SUBSCRIBED TO
+    Serial.printf("\nMessage received : ( topic: %s ) \n", topic); 
+    char *received = new char[length + 1] {0}; 
   
-  Serial.printf("\nMessage received : ( topic: %s ) \n",topic ); 
-  char *received = new char[length + 1] {0}; 
-  
-  for (int i = 0; i < length; i++) { 
-    received[i] = (char)payload[i];    
-  }
+    for (int i = 0; i < length; i++) { 
+        received[i] = (char)payload[i];    
+    }
 
-  // PRINT RECEIVED MESSAGE
-  Serial.printf("Payload : %s \n",received);
+    Serial.printf("Payload : %s \n", received);
 
- 
-  // CONVERT MESSAGE TO JSON
+    // CONVERT MESSAGE TO JSON
+    StaticJsonDocument<200> doc;
+    deserializeJson(doc, received);
 
+    // PROCESS MESSAGE - if passcode update received
+    if(doc.containsKey("passcode")) {
+        Serial.printf("New passcode received: %s\n", (const char*)doc["passcode"]);
+    }
 
-  // PROCESS MESSAGE
-
+    delete[] received;
 }
 
 bool publish(const char *topic, const char *payload){   
-     bool res = false;
-     try{
-        res = mqtt.publish(topic,payload);
-        // Serial.printf("\nres : %d\n",res);
+    bool res = false;
+    try{
+        res = mqtt.publish(topic, payload);
         if(!res){
-          res = false;
-          throw false;
+            res = false;
+            throw false;
         }
-     }
-     catch(...){
-      Serial.printf("\nError (%d) >> Unable to publish message\n", res);
-     }
-  return res;
+    }
+    catch(...){
+        Serial.printf("\nError (%d) >> Unable to publish message\n", res);
+    }
+    return res;
 }
 
-//***** Complete the util functions below ******
-  
+//####################################################################
+//#                        DIGIT FUNCTIONS                           #
+//####################################################################
 void digit1(uint8_t number){
-  // CREATE BOX AND WRITE NUMBER IN THE BOX FOR THE FIRST DIGIT
-  // 1. Set font to FreeSansBold18pt7b 
-  // 2. Draw a filled rounded rectangle close to the bottom of the screen. Give it any colour you like 
-  // 3. Set cursor to the appropriate coordinates in order to write the number in the middle of the box 
-  // 4. Set the text colour of the number. Use any colour you like 
-  // 5. Set font size to one 
-  // 6. Print number to the screen 
+    tft.setFont(&FreeSansBold18pt7b);
+    tft.fillRoundRect(20, 260, 50, 50, 8, ILI9341_GREEN);
+    tft.setCursor(33, 295);
+    tft.setTextColor(ILI9341_BLACK);
+    tft.setTextSize(1);
+    tft.printf("%d", number);
 }
- 
+
 void digit2(uint8_t number){
-  // CREATE BOX AND WRITE NUMBER IN THE BOX FOR THE SECOND DIGIT
-  // 1. Set font to FreeSansBold18pt7b 
-  // 2. Draw a filled rounded rectangle close to the bottom of the screen. Give it any colour you like 
-  // 3. Set cursor to the appropriate coordinates in order to write the number in the middle of the box 
-  // 4. Set the text colour of the number. Use any colour you like 
-  // 5. Set font size to one 
-  // 6. Print number to the screen 
+    tft.setFont(&FreeSansBold18pt7b);
+    tft.fillRoundRect(80, 260, 50, 50, 8, ILI9341_GREEN);
+    tft.setCursor(93, 295);
+    tft.setTextColor(ILI9341_BLACK);
+    tft.setTextSize(1);
+    tft.printf("%d", number);
 }
 
 void digit3(uint8_t number){
-  // CREATE BOX AND WRITE NUMBER IN THE BOX FOR THE THIRD DIGIT
-  // 1. Set font to FreeSansBold18pt7b 
-  // 2. Draw a filled rounded rectangle close to the bottom of the screen. Give it any colour you like 
-  // 3. Set cursor to the appropriate coordinates in order to write the number in the middle of the box 
-  // 4. Set the text colour of the number. Use any colour you like 
-  // 5. Set font size to one 
-  // 6. Print number to the screen 
+    tft.setFont(&FreeSansBold18pt7b);
+    tft.fillRoundRect(140, 260, 50, 50, 8, ILI9341_GREEN);
+    tft.setCursor(153, 295);
+    tft.setTextColor(ILI9341_BLACK);
+    tft.setTextSize(1);
+    tft.printf("%d", number);
 }
 
 void digit4(uint8_t number){
-  // CREATE BOX AND WRITE NUMBER IN THE BOX FOR THE FOURTH DIGIT
-  // 1. Set font to FreeSansBold18pt7b 
-  // 2. Draw a filled rounded rectangle close to the bottom of the screen. Give it any colour you like 
-  // 3. Set cursor to the appropriate coordinates in order to write the number in the middle of the box 
-  // 4. Set the text colour of the number. Use any colour you like 
-  // 5. Set font size to one 
-  // 6. Print number to the screen 
+    tft.setFont(&FreeSansBold18pt7b);
+    tft.fillRoundRect(200, 260, 50, 50, 8, ILI9341_GREEN);
+    tft.setCursor(213, 295);
+    tft.setTextColor(ILI9341_BLACK);
+    tft.setTextSize(1);
+    tft.printf("%d", number);
 }
- 
- 
+
 void checkPasscode(void){
-    // THE APPROPRIATE ROUTE IN THE BACKEND COMPONENT MUST BE CREATED BEFORE THIS FUNCTION CAN WORK
     WiFiClient client;
     HTTPClient http;
 
-    if(WiFi.status()== WL_CONNECTED){ 
+    if(WiFi.status() == WL_CONNECTED){ 
+        http.begin(client, "http://10.22.13.197:8080/api/check/combination");
+        http.addHeader("Content-Type", "application/x-www-form-urlencoded");
       
-      // 1. REPLACE LOCALHOST IN THE STRING BELOW WITH THE IP ADDRESS OF THE COMPUTER THAT YOUR BACKEND IS RUNNING ON
-      http.begin(client, "http://localhost:8080/api/check/combination"); // Your Domain name with URL path or IP address with path 
- 
-      
-      http.addHeader("Content-Type", "application/x-www-form-urlencoded"); // Specify content-type header      
-      char message[20];  // Store the 4 digit passcode that will be sent to the backend for validation via HTTP POST
-      
-      // 2. Insert all four (4) digits of the passcode into a string with 'passcode=1234' format and then save this modified string in the message[20] variable created above 
-       
+        char message[20];
+        snprintf(message, sizeof(message), "passcode=%d%d%d%d",
+            digit1Val, digit2Val, digit3Val, digit4Val);
                       
-      int httpResponseCode = http.POST(message);  // Send HTTP POST request and then wait for a response
+        int httpResponseCode = http.POST(message);
 
-      if (httpResponseCode > 0) {
-        Serial.print("HTTP Response code: ");
-        Serial.println(httpResponseCode);
-        String received = http.getString();
-       
-        // 3. CONVERT 'received' TO JSON. 
-        
+        if (httpResponseCode > 0) {
+            Serial.print("HTTP Response code: ");
+            Serial.println(httpResponseCode);
+            String received = http.getString();
 
-        // 4. PROCESS MESSAGE. The response from the route that is used to validate the passcode
-        // will be either {"status":"complete","data":"complete"}  or {"status":"failed","data":"failed"} schema.
-        // (1) if the status is complete, set the lockState variable to true, then invoke the showLockState function
-        // (2) otherwise, set the lockState variable to false, then invoke the showLockState function
-              
-      }     
-        
-      // Free resources
-      http.end();
+            // CONVERT TO JSON
+            StaticJsonDocument<200> doc;
+            deserializeJson(doc, received);
 
+            // PROCESS RESPONSE
+            const char* status = doc["status"];
+            if(strcmp(status, "complete") == 0) {
+                lockState = true;
+                showLockState();
+            } else {
+                lockState = false;
+                showLockState();
+            }
+        }     
+        http.end();
     }
-             
- }
-
-
+}
 
 void showLockState(void){
-  
-    // Toggles the open and close lock images on the screen based on the lockState variable  
     tft.setFont(&FreeSansBold9pt7b);  
     tft.setTextSize(1);
     
-
     if(lockState == true){
-      tft.drawRGBBitmap(68,10, lockopen, 104, 97); 
-      tft.setCursor(50, 200);  
-      tft.setTextColor(ILI9341_WHITE); 
-      tft.printf("Access Denied"); 
-      tft.setCursor(50, 200);  
-      tft.setTextColor(ILI9341_GREEN); 
-      tft.printf("Access Granted");
-      
+        tft.drawRGBBitmap(68, 10, lockopen, 104, 97); 
+        tft.setCursor(50, 200);  
+        tft.setTextColor(ILI9341_WHITE); 
+        tft.printf("Access Denied"); 
+        tft.setCursor(50, 200);  
+        tft.setTextColor(ILI9341_GREEN); 
+        tft.printf("Access Granted");
     }
     else {
-      tft.drawRGBBitmap(68,10, lockclose, 104, 103); 
-      tft.setCursor(50, 200);  
-      tft.setTextColor(ILI9341_WHITE); 
-      tft.printf("Access Granted"); 
-      tft.setCursor(50, 200);  
-      tft.setTextColor(ILI9341_RED); 
-      tft.printf("Access Denied"); 
+        tft.drawRGBBitmap(68, 10, lockclose, 104, 103); 
+        tft.setCursor(50, 200);  
+        tft.setTextColor(ILI9341_WHITE); 
+        tft.printf("Access Granted"); 
+        tft.setCursor(50, 200);  
+        tft.setTextColor(ILI9341_RED); 
+        tft.printf("Access Denied"); 
     }
-    
 }
- 
