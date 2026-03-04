@@ -65,7 +65,7 @@ static const char* mqtt_server   = "10.22.13.197";
 static uint16_t mqtt_port        = 1883;
 
 // WIFI CREDENTIALS
-const char* ssid       = "MonaConnnect";
+const char* ssid       = "MonaConnect";
 const char* password   = "";
 
 // TASK HANDLES 
