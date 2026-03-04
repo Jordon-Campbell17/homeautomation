@@ -47,9 +47,14 @@ void loop(){
   float percentage  = getPercentage(waterheight);
 
   char message[200];
+  char r[10], wh[10], res[10], pct[10];
+  dtostrf(radar, 1, 2, r);
+  dtostrf(waterheight, 1, 2, wh);
+  dtostrf(reserve, 1, 2, res);
+  dtostrf(percentage, 1, 2, pct);
   snprintf(message, sizeof(message),
-    "{\"id\":\"%s\",\"type\":\"ultrasonic\",\"radar\":%.2f,\"waterheight\":%.2f,\"reserve\":%.2f,\"percentage\":%.2f}",
-    idNumber, radar, waterheight, reserve, percentage);
+    "{\"id\":\"%s\",\"type\":\"ultrasonic\",\"radar\":%s,\"waterheight\":%s,\"reserve\":%s,\"percentage\":%s}",
+    idNumber, r, wh, res, pct);
 
   Serial.println(message);
   espUpdate(message);
